@@ -29,8 +29,7 @@ namespace Test.Touchsocket
             {
                 var buffer = byteBlock.Buffer;
                 var r = byteBlock.Len;
-                this.SplitPackage(buffer,0,r);
-              
+                this.SplitPackage(buffer, 0, r);
             }
             else
             {
@@ -40,7 +39,6 @@ namespace Test.Touchsocket
                 var buffer = m_tempByteBlock.Buffer;
                 r = m_tempByteBlock.Len;
 
-               
                 if (r > 1024 * 10)
                 {
                     var str = Encoding.UTF8.GetString(buffer, 0, r);
