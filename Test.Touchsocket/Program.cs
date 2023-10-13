@@ -28,11 +28,11 @@ namespace Test.Touchsocket
             service.Connecting = (client, e) => { };//有客户端正在连接
             service.Connected = (client, e) => {
                 logger.Info($"客户端ID{client.IP}:{client.Port}成功连接");
-                client.Logger.Info($"客户端ID{client.IP}:{client.Port}成功连接");
+                client.Logger.Info($"客户端ID{client.IP}:{client.Port}成功连接\r\n");
             };//有客户端成功连接
             service.Disconnected = (client, e) => {
                 logger.Info($"客户端ID{client.IP}:{client.Port}断开连接");
-                client.Logger.Info($"客户端ID{client.IP}:{client.Port}断开连接");
+                client.Logger.Info($"客户端ID{client.IP}:{client.Port}断开连接\r\n");
 
             };//有客户端断开连接
             service.Received = (client, byteBlock, requestInfo) =>

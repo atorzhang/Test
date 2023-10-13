@@ -11,7 +11,7 @@ namespace Test.Touchsocket
     internal class JsonDataHandleAdapter : SingleStreamDataHandlingAdapter
     {
         public static FileLogger Logger = new FileLogger();
-        //public static ConsoleLogger CLogger = ConsoleLogger.Default;
+        public static ConsoleLogger CLogger = ConsoleLogger.Default;
 
         /// <summary>
         /// 临时包，此包仅当前实例储存
@@ -29,35 +29,51 @@ namespace Test.Touchsocket
             {
                 var buffer = byteBlock.Buffer;
                 var r = byteBlock.Len;
+                var datas = Encoding.UTF8.GetString(buffer,0, r);
+                CLogger.Info("新包来了："+datas+ "\r\n");
                 this.SplitPackage(buffer, 0, r);
             }
             else
             {
+
                 //将新字节块写入
                 var r = byteBlock.Len;
-                m_tempByteBlock.Write(byteBlock.Buffer, 0, r);
-                var buffer = m_tempByteBlock.Buffer;
-                r = m_tempByteBlock.Len;
-
-                if (r > 1024 * 10)
+                var datas = Encoding.UTF8.GetString(byteBlock.Buffer, 0, r);
+                if (datas.StartsWith("{"))
                 {
-                    var str = Encoding.UTF8.GetString(buffer, 0, r);
-                    this.m_tempByteBlock = null;
-                    Logger.Info($"清空缓存块,缓存过大10kb\r\n{str}");
-                    return;
-                }
-                var result = this.SplitPackage(buffer, 0, r);
-                if (result)
-                {
-                    //清空缓存块
-                    this.m_tempByteBlock = null;
-                    //Logger.Info("清空缓存块");
-                    //CLogger.Info($"清空缓存块\r\n{str}");
+                    m_tempByteBlock = null;
+                    this.SplitPackage(byteBlock.Buffer, 0, r);
                 }
                 else
                 {
-                    //Logger.Info("累计缓存块");
-                    //CLogger.Info($"累计缓存块\r\n{str}");
+                    CLogger.Info("旧包来了：" + datas + "\r\n");
+
+                    m_tempByteBlock.Write(byteBlock.Buffer, 0, r);
+                    var buffer = m_tempByteBlock.Buffer;
+                    r = m_tempByteBlock.Len;
+                    if (r > 1024 * 10)
+                    {
+                        var str1 = Encoding.UTF8.GetString(buffer, 0, r);
+                        this.m_tempByteBlock = null;
+                        Logger.Info($"清空缓存块,缓存过大10kb\r\n{str1}\r\n");
+
+                        return;
+                    }
+                    var result = this.SplitPackage(buffer, 0, r);
+
+                    var str = Encoding.UTF8.GetString(buffer, 0, r);
+                    if (result)
+                    {
+                        //清空缓存块
+                        this.m_tempByteBlock = null;
+                        //Logger.Info("清空缓存块");
+                        CLogger.Info($"清空缓存块\r\n{str}\r\n");
+                    }
+                    else
+                    {
+                        //Logger.Info("累计缓存块");
+                        CLogger.Info($"累计缓存块\r\n{str}\r\n");
+                    }
                 }
             }
         }
