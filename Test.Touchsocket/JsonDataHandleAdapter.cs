@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using TouchSocket.Core;
 
@@ -10,6 +11,7 @@ namespace Test.Touchsocket
 {
     internal class JsonDataHandleAdapter : SingleStreamDataHandlingAdapter
     {
+        public static int JsonTempSize = 20;
         public static FileLogger Logger = new FileLogger();
         public static ConsoleLogger CLogger = ConsoleLogger.Default;
 
@@ -29,50 +31,43 @@ namespace Test.Touchsocket
             {
                 var buffer = byteBlock.Buffer;
                 var r = byteBlock.Len;
-                var datas = Encoding.UTF8.GetString(buffer,0, r);
-                CLogger.Info("新包来了："+datas+ "\r\n");
                 this.SplitPackage(buffer, 0, r);
             }
             else
             {
-
                 //将新字节块写入
                 var r = byteBlock.Len;
-                var datas = Encoding.UTF8.GetString(byteBlock.Buffer, 0, r);
-                if (datas.StartsWith("{"))
+                var currentStr = Encoding.UTF8.GetString(byteBlock.Buffer, 0, r);
+                if (currentStr.StartsWith("{"))
                 {
                     m_tempByteBlock = null;
                     this.SplitPackage(byteBlock.Buffer, 0, r);
                 }
                 else
                 {
-                    CLogger.Info("旧包来了：" + datas + "\r\n");
-
                     m_tempByteBlock.Write(byteBlock.Buffer, 0, r);
                     var buffer = m_tempByteBlock.Buffer;
                     r = m_tempByteBlock.Len;
-                    if (r > 1024 * 10)
-                    {
-                        var str1 = Encoding.UTF8.GetString(buffer, 0, r);
-                        this.m_tempByteBlock = null;
-                        Logger.Info($"清空缓存块,缓存过大10kb\r\n{str1}\r\n");
 
+                    var str = Encoding.UTF8.GetString(buffer, 0, r);
+                    if (r > 1024 * JsonTempSize)
+                    {
+                        this.m_tempByteBlock = null;
+                        Logger.Info($"清空缓存块,缓存过大{JsonTempSize}kb\r\n{str}");
                         return;
                     }
                     var result = this.SplitPackage(buffer, 0, r);
-
-                    var str = Encoding.UTF8.GetString(buffer, 0, r);
                     if (result)
                     {
                         //清空缓存块
                         this.m_tempByteBlock = null;
                         //Logger.Info("清空缓存块");
-                        CLogger.Info($"清空缓存块\r\n{str}\r\n");
+                        //CLogger.Info($"清空缓存块\r\n{str}");
                     }
                     else
                     {
                         //Logger.Info("累计缓存块");
-                        CLogger.Info($"累计缓存块\r\n{str}\r\n");
+                        //CLogger.Info($"累计缓存块\r\n{str}");
                     }
                 }
             }
@@ -154,7 +149,8 @@ namespace Test.Touchsocket
             if (r % 1024 == 0)
             {
                 //长度是1024则可能是分包了
-                if (str[str.Length - 1] != '}')
+
+                if (str[str.Length - 1] != '}' && !str.Contains("}{"))
                 {
                     //最后一个字符不是结束符号，基本就可以认定这是不完整的包
                     this.m_tempByteBlock = byteBlock;
@@ -173,32 +169,59 @@ namespace Test.Touchsocket
             }
         }
 
-        private bool HandleStr(string str)
+        public bool HandleStr(string str)
         {
             if (str.Contains("}{"))
             {
-                str = $"[{str.Replace("}{", "},{")}]";
-                JArray jarray = null;
-                try
+                var strs = Regex.Split(str, "}{", RegexOptions.IgnoreCase);
+                for (int i = 0; i < strs.Length; i++)
                 {
-                    jarray = SerializeConvert.FromJsonString<JArray>(str);
-                }
-                catch (Exception e)
-                {
-                    //Logger.Error($"分包异常，包:\r\n{str}\r\n异常信息:\r\n{e.ToString()}");
-                    //CLogger.Error($"分包异常，包:\r\n{str}\r\n异常信息:\r\n{e.ToString()}");
-                }
-                if (jarray != null)
-                {
-                    foreach (JObject obj in jarray)
+                    var itemStr = strs[i];
+                    if (i == 0)
                     {
-                        var jstr = SerializeConvert.ToJsonString(obj);
-                        var subBuffer = Encoding.UTF8.GetBytes(jstr);
-                        var byteBlockSub = new ByteBlock(subBuffer.Length);
-                        byteBlockSub.Write(subBuffer);
-                        this.PreviewHandle(byteBlockSub);
+                        itemStr = itemStr + "}";
                     }
-                    return true;
+                    else if (i == strs.Length - 1)
+                    {
+                        itemStr = "{" + itemStr;
+                    }
+                    else
+                    {
+                        itemStr = "{" + itemStr + "}";
+                    }
+                    JObject jobj = null;
+                    try
+                    {
+                        jobj = SerializeConvert.FromJsonString<JObject>(itemStr);
+                        if (jobj != null)
+                        {
+                            var subBuffer = Encoding.UTF8.GetBytes(itemStr);
+                            var byteBlockSub = new ByteBlock(subBuffer.Length);
+                            byteBlockSub.Write(subBuffer);
+                            this.PreviewHandle(byteBlockSub);
+                        }
+                        else
+                        {
+                            Logger.Error($"解析失败：{itemStr},{i}/{strs.Length}");
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        if (i == strs.Length - 1)
+                        {
+                            var buffer = Encoding.UTF8.GetBytes(itemStr);
+                            var r = buffer.Length;
+                            var byteBlock = new ByteBlock(r);
+                            byteBlock.Write(buffer, 0, r);
+                            this.m_tempByteBlock = byteBlock;
+                            Logger.Debug($"解析等待下一轮：{itemStr}");
+                        }
+                        else
+                        {
+                            Logger.Error($"解析异常抛弃：{itemStr},{i}/{strs.Length}");
+                            Logger.Error($"解析异常抛弃原文：{str}");
+                        }
+                    }
                 }
             }
             else
